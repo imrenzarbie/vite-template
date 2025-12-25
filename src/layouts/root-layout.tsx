@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Link, Outlet } from "react-router";
 
 export const RootLayout = () => {
-    const navLinks = ["Dashboard", "Projects", "Team", "Settings"];
+    const navLinks = ["Dashboard", "Bill-Splitter", "Team", "Settings"];
 
     const SidebarContent = () => (
         <nav className="space-y-2 p-y-1">
