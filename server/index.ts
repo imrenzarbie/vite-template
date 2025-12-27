@@ -2,7 +2,17 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import Database from "better-sqlite3";
-import { User, Group, Bill, BillItem, CreateUserRequest } from "./types";
+import {
+    User,
+    Bill,
+    BillItem,
+    CreateUserRequest,
+    GroupMember,
+    UpdateUserRequest,
+    UpdateGroupRequest,
+    CreateGroupRequest,
+    Group,
+} from "./types";
 
 const app = new Hono();
 const db = new Database("database.db");
@@ -76,6 +86,11 @@ db.exec(`
 
 app.use("/*", cors());
 
+app.get("/api/users", (c) => {
+    const users = db.prepare("SELECT * FROM users").all() as User[];
+    return c.json(users);
+});
+
 // 1. Typed Request Body
 app.post("/api/users", async (c) => {
     const body = await c.req.json<CreateUserRequest>();
@@ -86,6 +101,33 @@ app.post("/api/users", async (c) => {
         .run(body.username, body.email);
 
     return c.json({ id: res.lastInsertRowid, ...body }, 201);
+});
+// Update user
+app.patch("/api/users/:id", async (c) => {
+    const id = c.req.param("id");
+    const body = await c.req.json<UpdateUserRequest>();
+
+    const user = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as User;
+    if (!user) return c.json({ error: "User not found" }, 404);
+
+    db.prepare(
+        `
+    UPDATE users
+    SET username = COALESCE(?, username),
+        email = COALESCE(?, email),
+        default_group_id = COALESCE(?, default_group_id)
+    WHERE id = ?
+  `
+    ).run(body.username, body.email, body.default_group_id, id);
+
+    return c.json({ message: "User updated" });
+});
+
+// Delete user
+app.delete("/api/users/:id", (c) => {
+    const id = c.req.param("id");
+    db.prepare("DELETE FROM users WHERE id = ?").run(id);
+    return c.json({ message: "User deleted" });
 });
 
 // 2. Typed Response
@@ -109,6 +151,87 @@ app.get("/api/users/:id", (c) => {
         )?.group_id;
 
     return c.json({ ...user, active_group_id: activeGroupId });
+});
+
+/**
+ * GROUP CRUD
+ */
+
+// List all groups
+app.get("/api/groups", (c) => {
+    const groups = db.prepare("SELECT * FROM groups").all() as Group[];
+    return c.json(groups);
+});
+
+// Get single group with members
+app.get("/api/groups/:id", (c) => {
+    const id = c.req.param("id");
+    const group = db
+        .prepare("SELECT * FROM groups WHERE id = ?")
+        .get(id) as Group;
+    if (!group) return c.json({ error: "Group not found" }, 404);
+
+    const members = db
+        .prepare(
+            `
+    SELECT u.id, u.username, gm.role
+    FROM users u
+    JOIN group_members gm ON u.id = gm.user_id
+    WHERE gm.group_id = ?
+  `
+        )
+        .all(id);
+
+    return c.json({ ...group, members });
+});
+
+// Create group
+app.post("/api/groups", async (c) => {
+    const body = await c.req.json<CreateGroupRequest>();
+    const res = db
+        .prepare("INSERT INTO groups (name, parent_group_id) VALUES (?, ?)")
+        .run(body.name, body.parent_group_id || null);
+
+    return c.json({ id: res.lastInsertRowid, ...body }, 201);
+});
+
+// Update group
+app.patch("/api/groups/:id", async (c) => {
+    const id = c.req.param("id");
+    const body = await c.req.json<UpdateGroupRequest>();
+
+    db.prepare(
+        `
+    UPDATE groups
+    SET name = COALESCE(?, name),
+        parent_group_id = COALESCE(?, parent_group_id)
+    WHERE id = ?
+  `
+    ).run(body.name, body.parent_group_id, id);
+
+    return c.json({ message: "Group updated" });
+});
+
+// Delete group
+app.delete("/api/groups/:id", (c) => {
+    const id = c.req.param("id");
+    db.prepare("DELETE FROM groups WHERE id = ?").run(id);
+    return c.json({ message: "Group deleted" });
+});
+
+// Add member to group
+app.post("/api/groups/:id/members", async (c) => {
+    const groupId = c.req.param("id");
+    const { user_id, role } = await c.req.json<{
+        user_id: number;
+        role?: string;
+    }>();
+
+    db.prepare(
+        "INSERT INTO group_members (group_id, user_id, role) VALUES (?, ?, ?)"
+    ).run(groupId, user_id, role || "member");
+
+    return c.json({ message: "Member added" }, 201);
 });
 
 // 3. Typed Bill Splitting Logic

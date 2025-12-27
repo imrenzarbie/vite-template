@@ -50,10 +50,17 @@ export interface CreateUserRequest {
     email: string;
 }
 
+export type UpdateUserRequest = Partial<
+    Pick<User, "username" | "email" | "default_group_id">
+>;
+
 export interface CreateGroupRequest {
     name: string;
     parent_group_id?: number;
 }
+export type UpdateGroupRequest = Partial<
+    Pick<Group, "name" | "parent_group_id">
+>;
 
 export interface CreateBillRequest {
     title: string;
