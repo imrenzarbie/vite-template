@@ -8,7 +8,6 @@ export const groupKeys = {
     detail: (id: number) => ["groups", id] as const,
 };
 
-// Hook for managing groups list
 export function useGroups() {
     const queryClient = useQueryClient();
 
@@ -24,16 +23,24 @@ export function useGroups() {
         },
     });
 
+    const deleteMutation = useMutation({
+        mutationFn: (id: number) => groupsApi.delete(id),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: groupKeys.all });
+        },
+    });
+
     return {
         groups: query.data ?? [],
         isLoading: query.isLoading,
         error: query.error,
         createGroup: createMutation.mutateAsync,
         isCreating: createMutation.isPending,
+        deleteGroup: deleteMutation.mutateAsync,
+        isDeleting: deleteMutation.isPending,
     };
 }
 
-// Hook for managing a single group
 export function useGroup(groupId: number | null) {
     const queryClient = useQueryClient();
 
@@ -67,6 +74,7 @@ export function useGroup(groupId: number | null) {
         group: query.data ?? null,
         isLoading: query.isLoading,
         error: query.error,
+        refetch: query.refetch,
         addMember: addMemberMutation.mutateAsync,
         isAddingMember: addMemberMutation.isPending,
         removeMember: removeMemberMutation.mutateAsync,

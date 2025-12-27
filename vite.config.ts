@@ -6,6 +6,11 @@ import react from "@vitejs/plugin-react";
 // https://vite.dev/config/
 export default defineConfig({
     plugins: [react(), tailwindcss()],
+    // test: {
+    //     globals: true,
+    //     environment: "jsdom",
+    //     setupFiles: "./src/test/setup.ts",
+    // },
     resolve: {
         alias: {
             "@": path.resolve(__dirname, "src"),
@@ -13,7 +18,6 @@ export default defineConfig({
     },
     server: {
         proxy: {
-            // Proxies any request starting with /api to the Hono server
             "/api": {
                 target: "http://localhost:3001",
                 changeOrigin: true,

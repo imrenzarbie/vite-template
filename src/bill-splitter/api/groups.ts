@@ -1,7 +1,3 @@
-// src/api/groups.ts
-
-const API_BASE = "http://localhost:3001/api";
-
 export interface Group {
     id: number;
     name: string;
@@ -32,21 +28,21 @@ export interface AddMemberPayload {
 
 export const groupsApi = {
     getAll: async (): Promise<Group[]> => {
-        const res = await fetch(`${API_BASE}/groups`);
+        const res = await fetch(`/api/groups`);
         if (!res.ok) throw new Error("Failed to fetch groups");
         const json = await res.json();
         return json.data;
     },
 
     getById: async (id: number): Promise<GroupWithMembers> => {
-        const res = await fetch(`${API_BASE}/groups/${id}`);
+        const res = await fetch(`/api/groups/${id}`);
         if (!res.ok) throw new Error("Failed to fetch group");
         const json = await res.json();
         return json.data;
     },
 
     create: async (payload: CreateGroupPayload): Promise<{ id: number }> => {
-        const res = await fetch(`${API_BASE}/groups`, {
+        const res = await fetch(`/api/groups`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
@@ -55,11 +51,18 @@ export const groupsApi = {
         return res.json();
     },
 
+    delete: async (id: number): Promise<void> => {
+        const res = await fetch(`/api/groups/${id}`, {
+            method: "DELETE",
+        });
+        if (!res.ok) throw new Error("Failed to delete group");
+    },
+
     addMember: async (
         groupId: number,
         payload: AddMemberPayload
     ): Promise<void> => {
-        const res = await fetch(`${API_BASE}/groups/${groupId}/members`, {
+        const res = await fetch(`/api/groups/${groupId}/members`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
@@ -68,12 +71,9 @@ export const groupsApi = {
     },
 
     removeMember: async (groupId: number, userId: number): Promise<void> => {
-        const res = await fetch(
-            `${API_BASE}/groups/${groupId}/members/${userId}`,
-            {
-                method: "DELETE",
-            }
-        );
+        const res = await fetch(`/api/groups/${groupId}/members/${userId}`, {
+            method: "DELETE",
+        });
         if (!res.ok) throw new Error("Failed to remove member");
     },
 };

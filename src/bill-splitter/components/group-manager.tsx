@@ -1,8 +1,6 @@
-import React, { useState, useMemo } from "react";
-import { useStore } from "../store";
-import { v4 as uuidv4 } from "uuid";
+// src/components/GroupManager.tsx
 
-// shadcn/ui components (Adjust paths to your project)
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -15,86 +13,165 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Users, Layers, CheckCircle2, Trash2 } from "lucide-react";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+    Plus,
+    Users,
+    Layers,
+    Trash2,
+    RefreshCw,
+    AlertCircle,
+    Loader2,
+} from "lucide-react";
 import { toast } from "sonner";
+import { useGroup, useGroups } from "../hooks/use-groups";
+import { useUsers } from "../hooks/use-users";
 
 export const GroupManager: React.FC = () => {
+    const [currentGroupId, setCurrentGroupId] = useState<number | null>(null);
+    const [newGroupName, setNewGroupName] = useState("");
+    const [newSubGroupName, setNewSubGroupName] = useState("");
+    const [selectedUserId, setSelectedUserId] = useState<string>("");
+    const [selectedRole, setSelectedRole] = useState<string>("member");
+    const [selectedMemberIds, setSelectedMemberIds] = useState<number[]>([]);
+
     const {
         groups,
-        groupIds,
-        currentGroupId,
+        isLoading: isLoadingGroups,
+        error: groupsError,
         createGroup,
-        setCurrentGroup,
+        isCreating,
         deleteGroup,
+        isDeleting,
+    } = useGroups();
+
+    const {
+        group: currentGroup,
+        isLoading: isLoadingGroup,
+        error: groupError,
         addMember,
-        addSubGroup,
-    } = useStore();
+        isAddingMember,
+        removeMember,
+        isRemovingMember,
+        refetch: refetchGroup,
+    } = useGroup(currentGroupId);
 
-    // --- Local UI State ---
-    const [newGroupName, setNewGroupName] = useState("");
-    const [newMemberName, setNewMemberName] = useState("");
-    const [newSubGroupName, setNewSubGroupName] = useState("");
-    const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
+    const { users, isLoading: isLoadingUsers } = useUsers();
 
-    // --- Selectors ---
-    const currentGroup = useMemo(
-        () => (currentGroupId ? groups[currentGroupId] : null),
-        [groups, currentGroupId]
+    const subGroups = groups.filter(
+        (g) => g.parent_group_id === currentGroupId
     );
 
-    const groupList = useMemo(
-        () => groupIds.map((id) => groups[id]),
-        [groups, groupIds]
+    const availableUsers = users.filter(
+        (user) => !currentGroup?.members.some((m) => m.id === user.id)
     );
 
-    const membersArray = useMemo(
-        () =>
-            currentGroup
-                ? currentGroup.memberIds.map((id) => currentGroup.members[id])
-                : [],
-        [currentGroup]
-    );
-
-    // --- Handlers ---
-    const handleCreateGroup = () => {
+    const handleCreateGroup = async () => {
         if (!newGroupName.trim()) return;
-        createGroup(newGroupName.trim());
-        setNewGroupName("");
-        toast.success("Group created");
+        try {
+            const result = await createGroup({ name: newGroupName.trim() });
+            setNewGroupName("");
+            setCurrentGroupId(result.id);
+            toast.success("Group created");
+        } catch {
+            toast.error("Failed to create group");
+        }
     };
 
-    const handleAddMember = () => {
-        if (!newMemberName.trim() || !currentGroupId) return;
-        addMember({ id: uuidv4(), name: newMemberName.trim(), email: "" });
-        setNewMemberName("");
+    const handleDeleteGroup = async (id: number) => {
+        try {
+            await deleteGroup(id);
+            if (currentGroupId === id) {
+                setCurrentGroupId(null);
+            }
+            toast.success("Group deleted");
+        } catch {
+            toast.error("Failed to delete group");
+        }
     };
 
-    const handleAddSubGroup = () => {
+    const handleAddMember = async () => {
+        if (!selectedUserId || !currentGroupId) return;
+        try {
+            await addMember({
+                user_id: parseInt(selectedUserId),
+                role: selectedRole,
+            });
+            setSelectedUserId("");
+            setSelectedRole("member");
+            toast.success("Member added");
+        } catch {
+            toast.error("Failed to add member");
+        }
+    };
+
+    const handleRemoveMember = async (userId: number) => {
+        try {
+            await removeMember(userId);
+            toast.success("Member removed");
+        } catch {
+            toast.error("Failed to remove member");
+        }
+    };
+
+    const handleCreateSubGroup = async () => {
         if (!newSubGroupName.trim() || selectedMemberIds.length === 0) {
             toast.error(
                 "Please provide a name and select at least one member."
             );
             return;
         }
-        addSubGroup({
-            id: uuidv4(),
-            name: newSubGroupName.trim(),
-            memberIds: selectedMemberIds,
-        });
-        setNewSubGroupName("");
-        setSelectedMemberIds([]);
-        toast.success("Subgroup created");
+        try {
+            const result = await createGroup({
+                name: newSubGroupName.trim(),
+                parent_group_id: currentGroupId,
+            });
+            for (const memberId of selectedMemberIds) {
+                await fetch(
+                    `http://localhost:3001/api/groups/${result.id}/members`,
+                    {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            user_id: memberId,
+                            role: "member",
+                        }),
+                    }
+                );
+            }
+            setNewSubGroupName("");
+            setSelectedMemberIds([]);
+            toast.success("Subgroup created");
+        } catch {
+            toast.error("Failed to create subgroup");
+        }
     };
 
-    const toggleMemberSelection = (id: string) => {
+    const toggleMemberSelection = (id: number) => {
         setSelectedMemberIds((prev) =>
             prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]
         );
     };
 
+    const error = groupsError || groupError;
+
     return (
         <div className="max-w-6xl mx-auto p-6 space-y-8">
-            {/* 1. GROUP SELECTOR & CREATOR (The "Master" View) */}
+            {error && (
+                <Alert variant="destructive" data-testid="error-alert">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{error.message}</AlertDescription>
+                </Alert>
+            )}
+
             <Card className="border-primary/20 bg-primary/5">
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
@@ -115,87 +192,192 @@ export const GroupManager: React.FC = () => {
                                 e.key === "Enter" && handleCreateGroup()
                             }
                             className="bg-background"
+                            data-testid="new-group-input"
                         />
-                        <Button onClick={handleCreateGroup}>
-                            <Plus className="w-4 h-4 mr-2" /> New Group
+                        <Button
+                            onClick={handleCreateGroup}
+                            disabled={isCreating || !newGroupName.trim()}
+                            data-testid="create-group-button">
+                            {isCreating ? (
+                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            ) : (
+                                <Plus className="w-4 h-4 mr-2" />
+                            )}
+                            New Group
                         </Button>
                     </div>
 
                     <Separator />
 
-                    <div className="flex flex-wrap gap-2">
-                        {groupList.map((g) => (
-                            <div key={g.id} className="relative group">
-                                <Button
-                                    variant={
-                                        currentGroupId === g.id
-                                            ? "default"
-                                            : "outline"
-                                    }
-                                    onClick={() => setCurrentGroup(g.id)}
-                                    className="pr-8">
-                                    {g.name}
-                                </Button>
-                                <button
-                                    onClick={() => deleteGroup(g.id)}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity">
-                                    <Trash2 className="w-3 h-3" />
-                                </button>
-                            </div>
-                        ))}
-                    </div>
+                    {isLoadingGroups ? (
+                        <div
+                            className="flex gap-2"
+                            data-testid="groups-loading">
+                            <Skeleton className="h-10 w-24" />
+                            <Skeleton className="h-10 w-24" />
+                            <Skeleton className="h-10 w-24" />
+                        </div>
+                    ) : (
+                        <div
+                            className="flex flex-wrap gap-2"
+                            data-testid="groups-list">
+                            {groups
+                                .filter((g) => !g.parent_group_id)
+                                .map((g) => (
+                                    <div key={g.id} className="relative group">
+                                        <Button
+                                            variant={
+                                                currentGroupId === g.id
+                                                    ? "default"
+                                                    : "outline"
+                                            }
+                                            onClick={() =>
+                                                setCurrentGroupId(g.id)
+                                            }
+                                            className="pr-8"
+                                            data-testid={`group-button-${g.id}`}>
+                                            {g.name}
+                                        </Button>
+                                        <button
+                                            onClick={() =>
+                                                handleDeleteGroup(g.id)
+                                            }
+                                            disabled={isDeleting}
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity disabled:opacity-50"
+                                            data-testid={`delete-group-${g.id}`}>
+                                            <Trash2 className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                ))}
+                            {groups.filter((g) => !g.parent_group_id).length ===
+                                0 && (
+                                <p
+                                    className="text-muted-foreground text-sm"
+                                    data-testid="no-groups">
+                                    No groups yet. Create one to get started.
+                                </p>
+                            )}
+                        </div>
+                    )}
                 </CardContent>
             </Card>
 
-            {/* 2. GROUP CONTENT (The "Detail" View) */}
             {currentGroup ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* MEMBERS MANAGEMENT */}
                     <Card>
                         <CardHeader>
-                            <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-widest text-muted-foreground">
-                                <Users className="w-4 h-4" /> Members
-                            </CardTitle>
+                            <div className="flex items-center justify-between">
+                                <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-widest text-muted-foreground">
+                                    <Users className="w-4 h-4" /> Members
+                                </CardTitle>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => refetchGroup()}
+                                    data-testid="refresh-members">
+                                    <RefreshCw className="w-4 h-4" />
+                                </Button>
+                            </div>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="flex gap-2">
-                                <Input
-                                    placeholder="Alice"
-                                    value={newMemberName}
-                                    onChange={(e) =>
-                                        setNewMemberName(e.target.value)
-                                    }
-                                    onKeyDown={(e) =>
-                                        e.key === "Enter" && handleAddMember()
-                                    }
-                                />
+                                <Select
+                                    value={selectedUserId}
+                                    onValueChange={setSelectedUserId}
+                                    disabled={isLoadingUsers}>
+                                    <SelectTrigger data-testid="user-select">
+                                        <SelectValue placeholder="Select user" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {availableUsers.map((user) => (
+                                            <SelectItem
+                                                key={user.id}
+                                                value={user.id.toString()}>
+                                                {user.username} ({user.email})
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <Select
+                                    value={selectedRole}
+                                    onValueChange={setSelectedRole}>
+                                    <SelectTrigger
+                                        className="w-28"
+                                        data-testid="role-select">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="admin">
+                                            Admin
+                                        </SelectItem>
+                                        <SelectItem value="member">
+                                            Member
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
                                 <Button
                                     variant="secondary"
-                                    onClick={handleAddMember}>
-                                    Add
+                                    onClick={handleAddMember}
+                                    disabled={isAddingMember || !selectedUserId}
+                                    data-testid="add-member-button">
+                                    {isAddingMember ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                        "Add"
+                                    )}
                                 </Button>
                             </div>
-                            <ScrollArea className="h-[300px] border rounded-md p-2">
-                                {membersArray.length === 0 && (
-                                    <p className="text-center text-muted-foreground py-10 italic">
-                                        No members yet.
-                                    </p>
-                                )}
-                                {membersArray.map((m) => (
-                                    <div
-                                        key={m.id}
-                                        className="flex items-center justify-between p-2 rounded hover:bg-muted/50">
-                                        <span className="text-sm font-medium">
-                                            {m.name}
-                                        </span>
-                                        <CheckCircle2 className="w-4 h-4 text-green-500 opacity-50" />
-                                    </div>
-                                ))}
-                            </ScrollArea>
+
+                            {isLoadingGroup ? (
+                                <div
+                                    className="space-y-2"
+                                    data-testid="members-loading">
+                                    <Skeleton className="h-10 w-full" />
+                                    <Skeleton className="h-10 w-full" />
+                                    <Skeleton className="h-10 w-full" />
+                                </div>
+                            ) : (
+                                <ScrollArea className="h-[300px] border rounded-md p-2">
+                                    {currentGroup.members.length === 0 && (
+                                        <p
+                                            className="text-center text-muted-foreground py-10 italic"
+                                            data-testid="no-members">
+                                            No members yet.
+                                        </p>
+                                    )}
+                                    {currentGroup.members.map((m) => (
+                                        <div
+                                            key={m.id}
+                                            className="flex items-center justify-between p-2 rounded hover:bg-muted/50"
+                                            data-testid={`member-${m.id}`}>
+                                            <div>
+                                                <span className="text-sm font-medium">
+                                                    {m.username}
+                                                </span>
+                                                <span className="text-xs text-muted-foreground ml-2">
+                                                    ({m.role})
+                                                </span>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {m.email}
+                                                </p>
+                                            </div>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                onClick={() =>
+                                                    handleRemoveMember(m.id)
+                                                }
+                                                disabled={isRemovingMember}
+                                                data-testid={`remove-member-${m.id}`}>
+                                                <Trash2 className="w-4 h-4 text-destructive" />
+                                            </Button>
+                                        </div>
+                                    ))}
+                                </ScrollArea>
+                            )}
                         </CardContent>
                     </Card>
 
-                    {/* SUBGROUP MANAGEMENT */}
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-widest text-muted-foreground">
@@ -203,19 +385,55 @@ export const GroupManager: React.FC = () => {
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-4">
+                            {subGroups.length > 0 && (
+                                <div className="space-y-2 mb-4">
+                                    <label className="text-[10px] font-bold uppercase text-muted-foreground">
+                                        Existing Subgroups:
+                                    </label>
+                                    <div
+                                        className="flex flex-wrap gap-2"
+                                        data-testid="subgroups-list">
+                                        {subGroups.map((sg) => (
+                                            <div
+                                                key={sg.id}
+                                                className="relative group">
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() =>
+                                                        setCurrentGroupId(sg.id)
+                                                    }>
+                                                    {sg.name}
+                                                </Button>
+                                                <button
+                                                    onClick={() =>
+                                                        handleDeleteGroup(sg.id)
+                                                    }
+                                                    className="absolute -right-1 -top-1 opacity-0 group-hover:opacity-100 bg-destructive text-destructive-foreground rounded-full p-0.5 transition-opacity"
+                                                    data-testid={`delete-subgroup-${sg.id}`}>
+                                                    <Trash2 className="w-3 h-3" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <Separator />
+                                </div>
+                            )}
+
                             <Input
                                 placeholder="Subgroup Name (e.g., Drivers)"
                                 value={newSubGroupName}
                                 onChange={(e) =>
                                     setNewSubGroupName(e.target.value)
                                 }
+                                data-testid="subgroup-name-input"
                             />
                             <div className="space-y-2">
                                 <label className="text-[10px] font-bold uppercase text-muted-foreground">
                                     Select Members:
                                 </label>
                                 <ScrollArea className="h-40 border rounded-md p-3">
-                                    {membersArray.map((m) => (
+                                    {currentGroup.members.map((m) => (
                                         <div
                                             key={m.id}
                                             className="flex items-center space-x-2 py-1">
@@ -227,11 +445,12 @@ export const GroupManager: React.FC = () => {
                                                 onCheckedChange={() =>
                                                     toggleMemberSelection(m.id)
                                                 }
+                                                data-testid={`checkbox-member-${m.id}`}
                                             />
                                             <label
                                                 htmlFor={`check-${m.id}`}
                                                 className="text-sm cursor-pointer select-none">
-                                                {m.name}
+                                                {m.username}
                                             </label>
                                         </div>
                                     ))}
@@ -239,18 +458,21 @@ export const GroupManager: React.FC = () => {
                             </div>
                             <Button
                                 className="w-full"
-                                onClick={handleAddSubGroup}
+                                onClick={handleCreateSubGroup}
                                 disabled={
                                     !newSubGroupName ||
                                     selectedMemberIds.length === 0
-                                }>
+                                }
+                                data-testid="create-subgroup-button">
                                 Create Subgroup
                             </Button>
                         </CardContent>
                     </Card>
                 </div>
             ) : (
-                <div className="text-center py-20 border-2 border-dashed rounded-xl opacity-50">
+                <div
+                    className="text-center py-20 border-2 border-dashed rounded-xl opacity-50"
+                    data-testid="no-group-selected">
                     <Layers className="w-12 h-12 mx-auto mb-4" />
                     <h3 className="text-lg font-semibold">No Group Selected</h3>
                     <p className="text-sm">
