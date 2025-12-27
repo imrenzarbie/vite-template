@@ -1,103 +1,58 @@
-// src/components/Dashboard.tsx
-import { useStore } from "../store";
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatCents } from "@/lib/currency";
+import React, { useMemo } from "react";
+import { useActiveGroup } from "../hooks/use-active-group";
 import { calculateDebts } from "../lib/calculate-engine";
+import DebtMatrixTable from "./debt-matrix-table";
+import ItemBreakdownTable from "./item-breakdown-table";
+import { AlertCircle } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
-export function Dashboard() {
-    const { items, members, subGroups } = useStore();
+const Dashboard: React.FC = () => {
+    const activeGroup = useActiveGroup();
 
-    const memberArray = Object.values(members);
-    const itemArray = Object.values(items);
-    const debts = calculateDebts(
-        itemArray,
-        memberArray,
-        Object.values(subGroups)
+    // 1. Memoize transformations to prevent unnecessary recalculations
+    const itemArray = useMemo(
+        () => (activeGroup ? Object.values(activeGroup.items) : []),
+        [activeGroup?.items]
     );
+
+    const memberArray = useMemo(
+        () => (activeGroup ? Object.values(activeGroup.members) : []),
+        [activeGroup?.members]
+    );
+
+    const subGroupArray = useMemo(
+        () => (activeGroup ? Object.values(activeGroup.subGroups) : []),
+        [activeGroup?.subGroups]
+    );
+
+    const debts = useMemo(() => {
+        if (!activeGroup) return [];
+        return calculateDebts(itemArray, memberArray, subGroupArray);
+    }, [itemArray, memberArray, subGroupArray, activeGroup]);
+
+    if (!activeGroup) {
+        return (
+            <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>No Group Selected</AlertTitle>
+                <AlertDescription>
+                    Please select or create a group in the Group Manager to see
+                    the dashboard.
+                </AlertDescription>
+            </Alert>
+        );
+    }
 
     return (
-        <div className="grid gap-6">
-            <Card>
-                <CardHeader>
-                    <CardTitle>Item Breakdown</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Description</TableHead>
-                                <TableHead>Amount</TableHead>
-                                <TableHead>Paid By</TableHead>
-                                <TableHead>Assigned To</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {itemArray.map((item) => (
-                                <TableRow key={item.id}>
-                                    <TableCell>{item.description}</TableCell>
-                                    <TableCell>
-                                        {formatCents(item.amount)}
-                                    </TableCell>
-                                    <TableCell>
-                                        {members[item.paidBy]?.name ||
-                                            "Unknown"}
-                                    </TableCell>
-                                    <TableCell>
-                                        {item.assignedTo
-                                            .map(
-                                                (id) =>
-                                                    members[id]?.name ||
-                                                    subGroups[id]?.name ||
-                                                    id
-                                            )
-                                            .join(", ")}
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader>
-                    <CardTitle>Debt Matrix</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>From</TableHead>
-                                <TableHead>To</TableHead>
-                                <TableHead>Amount</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {debts.map((debt, idx) => (
-                                <TableRow key={idx}>
-                                    <TableCell>
-                                        {members[debt.from]?.name}
-                                    </TableCell>
-                                    <TableCell>
-                                        {members[debt.to]?.name}
-                                    </TableCell>
-                                    <TableCell>
-                                        {formatCents(debt.amount)}
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </CardContent>
-            </Card>
+        <div className="grid gap-6 animate-in fade-in duration-500">
+            <ItemBreakdownTable
+                items={itemArray}
+                members={activeGroup.members}
+                subGroups={activeGroup.subGroups}
+            />
+            <DebtMatrixTable debts={debts} members={activeGroup.members} />
         </div>
     );
-}
+};
+
+export default Dashboard;

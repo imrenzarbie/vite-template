@@ -1,4 +1,3 @@
-// src/types/index.ts
 export interface Member {
     id: string;
     name: string;
@@ -14,21 +13,30 @@ export interface SubGroup {
 export interface Item {
     id: string;
     description: string;
-    amount: number; // Store as cents (e.g., 1000 = $10.00)
-    assignedTo: string[]; // memberIds or subGroupIds
+    amount: number; // Cents
+    assignedTo: string[]; // memberIds
     paidBy: string; // memberId
 }
 
 export interface Group {
     id: string;
     name: string;
-    members: Member[];
-    subGroups: SubGroup[];
-    items: Item[];
+    members: Record<string, Member>;
+    memberIds: string[];
+    subGroups: Record<string, SubGroup>;
+    subGroupIds: string[];
+    items: Record<string, Item>;
+    itemIds: string[];
 }
 
 export interface Debt {
     from: string;
     to: string;
     amount: number; // Cents
+}
+
+export interface ParsedItem {
+    description: string;
+    amount: number; // Cents
+    assignees: string[]; // Names
 }

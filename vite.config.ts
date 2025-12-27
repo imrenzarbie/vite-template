@@ -11,4 +11,14 @@ export default defineConfig({
             "@": path.resolve(__dirname, "src"),
         },
     },
+    server: {
+        proxy: {
+            // Proxies any request starting with /api to the Hono server
+            "/api": {
+                target: "http://localhost:3001",
+                changeOrigin: true,
+                secure: false,
+            },
+        },
+    },
 });

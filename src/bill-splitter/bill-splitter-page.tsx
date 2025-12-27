@@ -1,10 +1,9 @@
-// src/App.tsx or src/pages/BillSplitterPage.tsx
 import { Toaster } from "sonner";
-import { Dashboard } from "./components/dashboard";
 import { ExportPanel } from "./components/export-panel";
 import { GroupManager } from "./components/group-manager";
 import { InputPanel } from "./components/input-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import Dashboard from "./components/dashboard";
 
 const BillSplitterPage = () => {
     return (
