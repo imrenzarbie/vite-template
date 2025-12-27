@@ -2,19 +2,146 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import Database from "better-sqlite3";
+import { User, Group, Bill, BillItem, CreateUserRequest } from "./types";
 
 const app = new Hono();
 const db = new Database("database.db");
 
-// Initialize table
-db.exec("CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY, msg TEXT)");
+// Enable foreign keys
+db.pragma("foreign_keys = ON");
+
+// Initialize tables
+db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    default_group_id INTEGER,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (default_group_id) REFERENCES groups(id) ON DELETE SET NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    parent_group_id INTEGER,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (parent_group_id) REFERENCES groups(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS group_members (
+    group_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    role TEXT DEFAULT 'member',
+    PRIMARY KEY (group_id, user_id),
+    FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS bills (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    raw_markdown TEXT,
+    total_amount REAL DEFAULT 0,
+    created_by INTEGER NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS bill_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bill_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    amount REAL NOT NULL,
+    FOREIGN KEY (bill_id) REFERENCES bills(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS bill_item_assignments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bill_item_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    UNIQUE (bill_item_id, user_id),
+    FOREIGN KEY (bill_item_id) REFERENCES bill_items(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_group_members_user ON group_members(user_id);
+  CREATE INDEX IF NOT EXISTS idx_bills_group ON bills(group_id);
+  CREATE INDEX IF NOT EXISTS idx_bill_items_bill ON bill_items(bill_id);
+  CREATE INDEX IF NOT EXISTS idx_assignments_item ON bill_item_assignments(bill_item_id);
+  CREATE INDEX IF NOT EXISTS idx_assignments_user ON bill_item_assignments(user_id);
+`);
 
 app.use("/*", cors());
 
-app.get("/api/data", (c) => {
-    const data = db.prepare("SELECT * FROM logs").all();
-    return c.json({ data });
+// 1. Typed Request Body
+app.post("/api/users", async (c) => {
+    const body = await c.req.json<CreateUserRequest>();
+
+    // TypeScript now knows body has username and email
+    const res = db
+        .prepare("INSERT INTO users (username, email) VALUES (?, ?)")
+        .run(body.username, body.email);
+
+    return c.json({ id: res.lastInsertRowid, ...body }, 201);
+});
+
+// 2. Typed Response
+app.get("/api/users/:id", (c) => {
+    const userId = c.req.param("id");
+    const user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as
+        | User
+        | undefined;
+
+    if (!user) return c.json({ error: "User not found" }, 404);
+
+    // Logic for default group
+    const activeGroupId =
+        user.default_group_id ||
+        (
+            db
+                .prepare(
+                    "SELECT group_id FROM group_members WHERE user_id = ? LIMIT 1"
+                )
+                .get(user.id) as GroupMember | undefined
+        )?.group_id;
+
+    return c.json({ ...user, active_group_id: activeGroupId });
+});
+
+// 3. Typed Bill Splitting Logic
+app.get("/api/bills/:id", (c) => {
+    const billId = c.req.param("id");
+
+    const bill = db
+        .prepare("SELECT * FROM bills WHERE id = ?")
+        .get(billId) as Bill;
+
+    // Get items and cast to BillItem array
+    const items = db
+        .prepare(
+            `
+    SELECT bi.*, GROUP_CONCAT(bia.user_id) as user_csv
+    FROM bill_items bi
+    LEFT JOIN bill_item_assignments bia ON bi.id = bia.bill_item_id
+    WHERE bi.bill_id = ?
+    GROUP BY bi.id
+  `
+        )
+        .all(billId) as (BillItem & { user_csv: string | null })[];
+
+    const formattedItems = items.map((item) => ({
+        id: item.id,
+        name: item.name,
+        amount: item.amount,
+        assigned_user_ids: item.user_csv
+            ? item.user_csv.split(",").map(Number)
+            : [],
+    }));
+
+    return c.json({ ...bill, items: formattedItems });
 });
 
 serve({ fetch: app.fetch, port: 3001 });
-console.log("Server running on http://localhost:3001");
