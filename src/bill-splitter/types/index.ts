@@ -1,9 +1,17 @@
+import z from "zod";
+
 export interface Member {
-    id: string;
-    name: string;
-    email: string;
+    id: number;
+    username: string;
+    email?: string;
+    role?: string;
 }
 
+export interface Group {
+    id: number;
+    name: string;
+    members?: Member[];
+}
 export interface SubGroup {
     id: string;
     name: string;
@@ -18,17 +26,6 @@ export interface Item {
     paidBy: string; // memberId
 }
 
-export interface Group {
-    id: string;
-    name: string;
-    members: Record<string, Member>;
-    memberIds: string[];
-    subGroups: Record<string, SubGroup>;
-    subGroupIds: string[];
-    items: Record<string, Item>;
-    itemIds: string[];
-}
-
 export interface Debt {
     from: string;
     to: string;
@@ -40,13 +37,11 @@ export interface ParsedItem {
     amount: number; // Cents
     assignees: string[]; // Names
 }
-
 export interface ReviewItem {
     id: string;
     description: string;
-    amount: number;
     quantity: number;
-    price: number;
+    amount: number;
     selectedMemberIds: string[];
 }
 
@@ -64,8 +59,11 @@ export interface CreateBillPayload {
     created_by: number;
     items: Array<{
         name: string;
-        amount: number; // in cents
+        amount: number;
         quantity: number;
-        assigned_user_ids: number[];
     }>;
 }
+
+export const parserSchema = z.object({
+    markdown: z.string().min(1, "Input cannot be empty"),
+});

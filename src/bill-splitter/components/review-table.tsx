@@ -1,132 +1,146 @@
+import React from "react";
+import { Check, Save } from "lucide-react";
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils"; // Assuming you have a standard cn utility
 import { ReviewItem, TransformedGroup } from "../types";
 
 interface ReviewTableProps {
     items: ReviewItem[];
-    activeGroup: TransformedGroup | null;
+    activeGroup?: TransformedGroup;
     onUpdateItem: (itemId: string, memberIds: string[]) => void;
+    onSave: () => void; // Added onSave prop
 }
 
-export const ReviewTable = ({
+const ReviewTable: React.FC<ReviewTableProps> = ({
     items,
     activeGroup,
     onUpdateItem,
-}: ReviewTableProps) => {
-    if (!activeGroup) {
-        return (
-            <div className="text-center py-8 text-muted-foreground">
-                Please select a group to assign members
-            </div>
-        );
-    }
-
-    const handleMemberToggle = (itemId: string, memberId: string) => {
-        const item = items.find((i) => i.id === itemId);
-        if (!item) return;
-
-        const isSelected = item.selectedMemberIds.includes(memberId);
-        const newMemberIds = isSelected
-            ? item.selectedMemberIds.filter((id) => id !== memberId)
-            : [...item.selectedMemberIds, memberId];
-
-        onUpdateItem(itemId, newMemberIds);
+    onSave,
+}) => {
+    const formatMoney = (cents: number) => {
+        return new Intl.NumberFormat("en-US", {
+            style: "currency",
+            currency: "USD",
+        }).format(cents / 100);
     };
 
-    const handleSelectAll = (itemId: string) => {
-        onUpdateItem(itemId, activeGroup.memberIds);
+    const toggleMember = (
+        itemId: string,
+        currentIds: string[],
+        memberId: string
+    ) => {
+        const isSelected = currentIds.includes(memberId);
+        let newIds: string[];
+
+        if (isSelected) {
+            // Unassign user
+            newIds = currentIds.filter((id) => id !== memberId);
+        } else {
+            // Assign user
+            newIds = [...currentIds, memberId];
+        }
+        onUpdateItem(itemId, newIds);
     };
 
-    const handleClearAll = (itemId: string) => {
-        onUpdateItem(itemId, []);
-    };
+    const ActionButtons = () => (
+        <div className="flex justify-end py-4">
+            <Button
+                onClick={onSave}
+                disabled={!activeGroup || items.length === 0}
+                className="w-full sm:w-auto">
+                <Save className="w-4 h-4 mr-2" />
+                Save Bill & Assignments
+            </Button>
+        </div>
+    );
 
     return (
         <div className="space-y-4">
-            {items.map((item) => (
-                <div key={item.id} className="border rounded-lg p-4 bg-card">
-                    <div className="flex justify-between items-start mb-4">
-                        <div className="flex-1">
-                            <h3 className="font-medium text-lg">
-                                {item.description}
-                            </h3>
-                            <div className="flex gap-4 mt-1 text-sm text-muted-foreground">
-                                <span>Qty: {item.quantity}</span>
-                                <span>
-                                    Price: ${(item.price / 100).toFixed(2)}
-                                </span>
-                                <span className="font-medium text-foreground">
-                                    Total: ${(item.amount / 100).toFixed(2)}
-                                </span>
-                            </div>
-                        </div>
-                        <div className="flex gap-2">
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleSelectAll(item.id)}>
-                                All
-                            </Button>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleClearAll(item.id)}>
-                                None
-                            </Button>
-                        </div>
-                    </div>
+            {/* Top Save Button */}
+            <ActionButtons />
 
-                    <div className="space-y-2">
-                        <h4 className="text-sm font-medium">
-                            Assign to members:
-                        </h4>
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                            {activeGroup.memberIds.map((memberId) => {
-                                const member = activeGroup.members[memberId];
-                                if (!member) return null;
+            <div className="rounded-md border bg-card">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead className="w-[30%]">Item</TableHead>
+                            <TableHead className="w-[10%]">Qty</TableHead>
+                            <TableHead className="w-[15%]">Price</TableHead>
+                            <TableHead>Split Between</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {items.map((item) => (
+                            <TableRow key={item.id}>
+                                <TableCell className="font-medium">
+                                    {item.description}
+                                </TableCell>
+                                <TableCell>{item.quantity}</TableCell>
+                                <TableCell>
+                                    {formatMoney(item.amount)}
+                                </TableCell>
+                                <TableCell>
+                                    {!activeGroup ? (
+                                        <span className="text-muted-foreground text-sm italic">
+                                            Select a group to assign members
+                                        </span>
+                                    ) : (
+                                        <div className="flex flex-wrap gap-2">
+                                            {Object.values(
+                                                activeGroup.members
+                                            ).map((member) => {
+                                                const isSelected =
+                                                    item.selectedMemberIds.includes(
+                                                        member.id
+                                                    );
+                                                return (
+                                                    <Button
+                                                        key={member.id}
+                                                        size="sm"
+                                                        variant={
+                                                            isSelected
+                                                                ? "default"
+                                                                : "outline"
+                                                        }
+                                                        onClick={() =>
+                                                            toggleMember(
+                                                                item.id,
+                                                                item.selectedMemberIds,
+                                                                member.id
+                                                            )
+                                                        }
+                                                        className={cn(
+                                                            "h-8 text-xs transition-all",
+                                                            isSelected
+                                                                ? "bg-green-600 hover:bg-green-700 text-white border-green-600"
+                                                                : "text-muted-foreground hover:text-foreground"
+                                                        )}>
+                                                        {isSelected && (
+                                                            <Check className="w-3 h-3 mr-1" />
+                                                        )}
+                                                        {member.name}
+                                                    </Button>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </div>
 
-                                const isSelected =
-                                    item.selectedMemberIds.includes(memberId);
-
-                                return (
-                                    <div
-                                        key={memberId}
-                                        className="flex items-center space-x-2 p-2 rounded-md hover:bg-muted/50 transition-colors">
-                                        <Checkbox
-                                            id={`${item.id}-${memberId}`}
-                                            checked={isSelected}
-                                            onCheckedChange={() =>
-                                                handleMemberToggle(
-                                                    item.id,
-                                                    memberId
-                                                )
-                                            }
-                                        />
-                                        <label
-                                            htmlFor={`${item.id}-${memberId}`}
-                                            className="text-sm font-medium leading-none cursor-pointer">
-                                            {member.name}
-                                        </label>
-                                        {member.role === "admin" && (
-                                            <Badge
-                                                variant="outline"
-                                                className="ml-auto text-xs">
-                                                Admin
-                                            </Badge>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
-                        {item.selectedMemberIds.length === 0 && (
-                            <p className="text-sm text-destructive mt-2">
-                                Please select at least one member
-                            </p>
-                        )}
-                    </div>
-                </div>
-            ))}
+            {/* Bottom Save Button */}
+            <ActionButtons />
         </div>
     );
 };

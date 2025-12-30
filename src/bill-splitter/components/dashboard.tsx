@@ -1,13 +1,12 @@
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Users, ArrowRight, Plus, FileText, DollarSign } from "lucide-react";
 import React from "react";
-import { useNavigate, useParams, Link } from "react-router";
-import { useGroups } from "../hooks/use-groups";
-import { useGroup } from "../hooks/use-group";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Plus, FileText, Users, DollarSign, ArrowRight } from "lucide-react";
-import { format } from "date-fns";
+import { useParams, useNavigate, Link } from "react-router";
 import { useBills } from "../hooks/use-bills";
+import { useGroup } from "../hooks/use-group";
+import { useGroups } from "../hooks/use-groups";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 const Dashboard = () => {
     const { groupId } = useParams<{ groupId: string }>();
@@ -18,16 +17,17 @@ const Dashboard = () => {
     const { group, isLoading: groupLoading } = useGroup(numericGroupId);
     const { bills = [], isLoading: billsLoading } = useBills(numericGroupId);
 
+    // Calculate totals safely
     const totalOwed = React.useMemo(() => {
-        // Simple calculation - you'd enhance this based on your split logic
         return bills.reduce((sum, bill) => sum + bill.total_amount, 0);
     }, [bills]);
 
     if (groupsLoading) {
-        return <div className="p-8">Loading dashboard...</div>;
+        return <div className="p-8">Loading...</div>;
     }
 
-    if (!groupId && groups.length > 0) {
+    // --- VIEW 1: LIST ALL GROUPS ---
+    if (!groupId) {
         return (
             <div className="p-8 space-y-6">
                 <div className="flex justify-between items-center">
@@ -37,61 +37,64 @@ const Dashboard = () => {
                             Select a group to view bills
                         </p>
                     </div>
-                    <Button onClick={() => navigate("/import")}>
-                        <Plus className="w-4 h-4 mr-2" /> Import Bill
-                    </Button>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {groups.map((group) => (
+                    {groups.map((g) => (
                         <Card
-                            key={group.id}
-                            className="hover:shadow-lg transition-shadow">
+                            key={g.id}
+                            className="hover:shadow-lg transition-shadow cursor-pointer"
+                            onClick={() => navigate(`/dashboard/${g.id}`)}>
                             <CardHeader>
                                 <CardTitle className="flex items-center justify-between">
-                                    <span>{group.name}</span>
-                                    <Badge variant="secondary">
-                                        {group.members?.length || 0} members
-                                    </Badge>
+                                    <span>{g.name}</span>
                                 </CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                     <Users className="w-4 h-4" />
-                                    {group.members
-                                        ?.map((m) => m.username)
-                                        .join(", ") || "No members"}
                                 </div>
                                 <Button
                                     className="w-full"
-                                    onClick={() =>
-                                        navigate(`/dashboard/${group.id}`)
-                                    }>
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        navigate(`/dashboard/${g.id}`);
+                                    }}>
                                     View Bills{" "}
                                     <ArrowRight className="w-4 h-4 ml-2" />
                                 </Button>
                             </CardContent>
                         </Card>
                     ))}
+
+                    {/* Add New Group Card (Optional) */}
+                    <Card
+                        className="flex flex-col items-center justify-center border-dashed cursor-pointer hover:bg-muted/50"
+                        onClick={() => navigate("/import")}>
+                        <Plus className="w-8 h-8 text-muted-foreground mb-2" />
+                        <span className="font-medium text-muted-foreground">
+                            Import / Create Group
+                        </span>
+                    </Card>
                 </div>
             </div>
         );
     }
 
+    // --- VIEW 2: SPECIFIC GROUP ---
     if (groupLoading || billsLoading) {
         return <div className="p-8">Loading group details...</div>;
     }
 
     return (
         <div className="p-8 space-y-6">
-            {/* Header */}
             <div className="flex justify-between items-start">
                 <div>
                     <h1 className="text-3xl font-bold">
-                        {group?.name || "Dashboard"}
+                        {group?.name || "Group"}
                     </h1>
                     <p className="text-muted-foreground">
-                        {group?.members?.length || 0} members • {bills.length}{" "}
+                        {group?.members?.length ?? 0} members • {bills.length}{" "}
                         bills
                     </p>
                 </div>
@@ -107,7 +110,7 @@ const Dashboard = () => {
                 </div>
             </div>
 
-            {/* Stats */}
+            {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -142,13 +145,13 @@ const Dashboard = () => {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">
-                            {group?.members?.length || 0}
+                            {group?.members?.length ?? 0}
                         </div>
                     </CardContent>
                 </Card>
             </div>
 
-            {/* Members */}
+            {/* Members List */}
             <Card>
                 <CardHeader>
                     <CardTitle>Group Members</CardTitle>
@@ -168,11 +171,16 @@ const Dashboard = () => {
                                 )}
                             </Badge>
                         ))}
+                        {(!group?.members || group.members.length === 0) && (
+                            <span className="text-muted-foreground text-sm">
+                                No members found.
+                            </span>
+                        )}
                     </div>
                 </CardContent>
             </Card>
 
-            {/* Bills */}
+            {/* Bills List */}
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                     <CardTitle>Recent Bills</CardTitle>
@@ -199,10 +207,10 @@ const Dashboard = () => {
                                             {bill.title}
                                         </div>
                                         <div className="text-sm text-muted-foreground">
-                                            {format(
+                                            {/* {format(
                                                 new Date(bill.created_at),
                                                 "MMM d, yyyy"
-                                            )}
+                                            )} */}
                                         </div>
                                     </div>
                                     <div className="font-bold">

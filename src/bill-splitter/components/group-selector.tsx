@@ -10,23 +10,33 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { useStore } from "../store";
+import { useGroups } from "../hooks/use-groups";
 
 export function GroupSelector() {
-    const { groups, groupIds, createGroup, setCurrentGroup } = useStore();
+    const { groups, createGroup } = useGroups();
     const [newGroupName, setNewGroupName] = useState("");
     const [isCreating, setIsCreating] = useState(false);
 
-    const handleCreateGroup = () => {
+    const handleCreateGroup = async () => {
         if (!newGroupName.trim()) {
             toast.error("Group name cannot be empty");
             return;
         }
-        createGroup(newGroupName);
+        const result = await createGroup({ name: newGroupName.trim() });
+        if (!result) {
+            toast.error("Failed to create group");
+            return;
+        }
         setNewGroupName("");
         setIsCreating(false);
         toast.success(`Group "${newGroupName}" created and selected`);
     };
+
+    const handleGroupSelect = (id: string) => {
+        toast.success(`Group "${groups[id].name}" selected`);
+    };
+
+    const groupIds = Object.keys(groups).map((id) => Number(id));
 
     return (
         <div className="space-y-4">
@@ -36,13 +46,13 @@ export function GroupSelector() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                     {groupIds.length > 0 && (
-                        <Select onValueChange={setCurrentGroup}>
+                        <Select onValueChange={handleGroupSelect}>
                             <SelectTrigger>
                                 <SelectValue placeholder="Choose a group" />
                             </SelectTrigger>
                             <SelectContent>
                                 {groupIds.map((id) => (
-                                    <SelectItem key={id} value={id}>
+                                    <SelectItem key={id} value={`${id}`}>
                                         {groups[id].name}
                                     </SelectItem>
                                 ))}
