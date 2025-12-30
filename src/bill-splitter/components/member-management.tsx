@@ -13,9 +13,9 @@ import { Trash2, RefreshCw, Users, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { GroupWithMembers } from "../api/groups";
-import { useGroupMutations } from "../hooks/use-groups";
 import { useUsers } from "../hooks/use-users";
 import UserCreationDialog from "./user-creation-dialog";
+import { useGroupMutations } from "../hooks/use-group-mutation";
 
 interface MemberManagementProps {
     group: GroupWithMembers;

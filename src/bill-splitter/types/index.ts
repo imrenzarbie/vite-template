@@ -40,3 +40,32 @@ export interface ParsedItem {
     amount: number; // Cents
     assignees: string[]; // Names
 }
+
+export interface ReviewItem {
+    id: string;
+    description: string;
+    amount: number;
+    quantity: number;
+    price: number;
+    selectedMemberIds: string[];
+}
+
+export interface TransformedGroup {
+    id: string;
+    name: string;
+    memberIds: string[];
+    members: Record<string, { id: string; name: string; role: string }>;
+}
+
+export interface CreateBillPayload {
+    title: string;
+    group_id: number;
+    raw_markdown?: string;
+    created_by: number;
+    items: Array<{
+        name: string;
+        amount: number; // in cents
+        quantity: number;
+        assigned_user_ids: number[];
+    }>;
+}

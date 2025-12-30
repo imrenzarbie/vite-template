@@ -1,10 +1,10 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { v4 as uuidv4 } from "uuid";
-import { useStore } from "../store";
 import { parseMarkdownTable } from "../lib/markdown-parser";
+import { useParams, useNavigate } from "react-router";
 import {
     Card,
     CardContent,
@@ -14,71 +14,122 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, FileText, Database, Loader2 } from "lucide-react";
+import { ArrowLeft, FileText, Database } from "lucide-react";
 import { toast } from "sonner";
 
-// Import sub-components
 import { FileUploadZone } from "./file-upload";
-import { GroupDestinationSelector } from "./group-destination-selector";
-import { ReviewTable, ReviewItem } from "./review-table";
+import { ReviewItem, TransformedGroup } from "../types";
+import GroupDestinationSelector from "./group-destination-selector";
+import ReviewTable from "./review-table";
+import { useGroups } from "../hooks/use-groups";
+import { useGroup } from "../hooks/use-group";
+import { billsApi } from "../api/bills";
 
 const schema = z.object({
     markdown: z.string().min(1, "Input cannot be empty"),
 });
 
-export const InputPanel: React.FC = () => {
-    const { groups, groupIds, setCurrentGroup, loadItemsFromMarkdown } =
-        useStore();
+interface ParsedMarkdownItem {
+    description?: string;
+    quantity?: number;
+    price?: number;
+}
 
-    // Local state for the review process
+const InputPanel = () => {
+    const { groupId: urlGroupId } = useParams<{ groupId: string }>();
+    const navigate = useNavigate();
+
+    const { groups = [] } = useGroups();
+    const { group: activeGroup } = useGroup(
+        urlGroupId ? parseInt(urlGroupId) : null
+    );
+
     const [reviewItems, setReviewItems] = useState<ReviewItem[] | null>(null);
-    const [targetGroupId, setTargetGroupId] = useState<string>("");
+    const [targetGroupId, setTargetGroupId] = useState<string>(
+        urlGroupId || ""
+    );
 
-    const form = useForm({
+    const form = useForm<z.infer<typeof schema>>({
         resolver: zodResolver(schema),
         defaultValues: { markdown: "" },
     });
 
-    // Handler for parsing raw markdown into ReviewItems
-    const onParse = (data: z.infer<typeof schema>) => {
+    const groupOptions = useMemo(() => {
+        const options: Record<string, TransformedGroup> = {};
+
+        groups.forEach((group) => {
+            options[group.id.toString()] = {
+                id: group.id.toString(),
+                name: group.name,
+                memberIds: [],
+                members: {},
+            };
+        });
+
+        // If we have a target group with members, update it
+        if (targetGroupId && activeGroup?.members) {
+            options[targetGroupId] = {
+                id: targetGroupId,
+                name: activeGroup.name,
+                memberIds: activeGroup.members.map((m) => m.id.toString()),
+                members: activeGroup.members.reduce((acc, member) => {
+                    acc[member.id.toString()] = {
+                        id: member.id.toString(),
+                        name: member.username,
+                        role: member.role,
+                    };
+                    return acc;
+                }, {} as Record<string, { id: string; name: string; role: string }>),
+            };
+        }
+
+        return options;
+    }, [groups, activeGroup, targetGroupId]);
+
+    const activeGroupForReview = targetGroupId
+        ? groupOptions[targetGroupId]
+        : null;
+
+    const isCommitDisabled = useMemo(() => {
+        if (!targetGroupId || !reviewItems) return true;
+        return reviewItems.some((item) => item.selectedMemberIds.length === 0);
+    }, [targetGroupId, reviewItems]);
+
+    const onParse = useCallback((data: z.infer<typeof schema>) => {
         try {
-            const parsed = parseMarkdownTable(data.markdown);
-            if (parsed.length === 0)
+            const parsed: ParsedMarkdownItem[] = parseMarkdownTable(
+                data.markdown
+            );
+            if (parsed.length === 0) {
                 throw new Error("No items found. Check markdown format.");
+            }
 
             const items: ReviewItem[] = parsed.map((p) => ({
                 id: uuidv4(),
                 description: p.description,
-                // (Qty * Price) * 100 for cents
+                quantity: p.quantity || 1,
+                price: p.price || 0,
                 amount: Math.round((p.quantity || 1) * (p.price || 0) * 100),
-                selectedMemberIds: [], // Empty until group is chosen
-                originalNames: [],
+                selectedMemberIds: [],
             }));
 
             setReviewItems(items);
             toast.success("Parsed! Now select a group to auto-assign splits.");
-        } catch (e) {
-            toast.error(e instanceof Error ? e.message : "Parse failed");
+        } catch (error) {
+            const message =
+                error instanceof Error ? error.message : "Parse failed";
+            toast.error(message);
         }
-    };
+    }, []);
 
-    // CRITICAL: When group changes, update all items to default to everyone
-    const handleGroupChange = (groupId: string) => {
-        setTargetGroupId(groupId);
-        const group = groups[groupId];
-        if (group && reviewItems) {
-            const allIds = group.memberIds;
-            setReviewItems(
-                (items) =>
-                    items?.map((item) => ({
-                        ...item,
-                        selectedMemberIds: allIds, // Default: Split with all
-                    })) || null
-            );
-        }
-    };
+    const handleGroupChange = useCallback(
+        (groupId: string) => {
+            setTargetGroupId(groupId);
+            navigate(`/group/${groupId}`);
+        },
+        [navigate]
+    );
 
-    // Update a single item's split list
     const handleUpdateItem = useCallback(
         (itemId: string, memberIds: string[]) => {
             setReviewItems(
@@ -93,28 +144,46 @@ export const InputPanel: React.FC = () => {
         []
     );
 
-    const onCommit = () => {
-        if (!targetGroupId || !reviewItems) return;
-        const activeGroup = groups[targetGroupId];
+    const onCommit = useCallback(async () => {
+        if (!targetGroupId || !reviewItems || !activeGroupForReview) {
+            toast.error(
+                "Please select a group and ensure all items have assignees"
+            );
+            return;
+        }
 
-        // Map local ReviewItems back to the store's ParsedItem format
-        const finalData = reviewItems.map((item) => ({
-            description: item.description,
-            amount: item.amount,
-            assignees: item.selectedMemberIds.map(
-                (id) => activeGroup.members[id].name
-            ),
-        }));
+        try {
+            const billItems = reviewItems.map((item) => ({
+                name: item.description,
+                amount: item.amount,
+                quantity: item.quantity,
+                assigned_user_ids: item.selectedMemberIds.map((id) =>
+                    parseInt(id)
+                ),
+            }));
 
-        setCurrentGroup(targetGroupId);
-        loadItemsFromMarkdown(finalData);
+            await billsApi.create({
+                title: `Imported Bill - ${new Date().toLocaleDateString()}`,
+                group_id: parseInt(targetGroupId),
+                raw_markdown: reviewItems
+                    .map(
+                        (i) =>
+                            `- ${i.description}: ${(i.amount / 100).toFixed(2)}`
+                    )
+                    .join("\n"),
+                created_by: 1,
+                items: billItems,
+            });
 
-        // Clear state
-        setReviewItems(null);
-        setTargetGroupId("");
-        form.reset();
-        toast.success("Successfully imported items!");
-    };
+            toast.success("Successfully imported bill and items!");
+            setReviewItems(null);
+            setTargetGroupId("");
+            form.reset();
+        } catch (error) {
+            console.error(error);
+            toast.error("Failed to import items");
+        }
+    }, [targetGroupId, reviewItems, activeGroupForReview, form]);
 
     if (reviewItems) {
         return (
@@ -137,20 +206,13 @@ export const InputPanel: React.FC = () => {
                     <div className="flex flex-col sm:flex-row gap-4 items-end bg-muted/30 p-4 rounded-lg border">
                         <div className="flex-1">
                             <GroupDestinationSelector
-                                groups={groups}
-                                groupIds={groupIds}
+                                groups={groupOptions}
+                                groupIds={groups.map((g) => g.id.toString())}
                                 selectedId={targetGroupId}
                                 onSelect={handleGroupChange}
                             />
                         </div>
-                        <Button
-                            onClick={onCommit}
-                            disabled={
-                                !targetGroupId ||
-                                reviewItems.some(
-                                    (i) => i.selectedMemberIds.length === 0
-                                )
-                            }>
+                        <Button onClick={onCommit} disabled={isCommitDisabled}>
                             <Database className="w-4 h-4 mr-2" /> Import to
                             Group
                         </Button>
@@ -158,9 +220,7 @@ export const InputPanel: React.FC = () => {
 
                     <ReviewTable
                         items={reviewItems}
-                        activeGroup={
-                            targetGroupId ? groups[targetGroupId] : null
-                        }
+                        activeGroup={activeGroupForReview}
                         onUpdateItem={handleUpdateItem}
                     />
                 </CardContent>
@@ -198,3 +258,5 @@ export const InputPanel: React.FC = () => {
         </Card>
     );
 };
+
+export default InputPanel;

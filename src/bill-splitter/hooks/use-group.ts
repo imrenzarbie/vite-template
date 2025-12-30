@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { groupsApi } from "../api/groups";
 import { queryKeys } from "../query-keys";
 
-const useGroup = (groupId: number | null) => {
+export const useGroup = (groupId: number | null) => {
     const query = useQuery({
         queryKey: queryKeys.groups.detail(groupId!),
         queryFn: () => groupsApi.getById(groupId!),
@@ -16,5 +16,3 @@ const useGroup = (groupId: number | null) => {
         refetch: query.refetch,
     };
 };
-
-export default useGroup;

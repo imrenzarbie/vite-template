@@ -1,0 +1,4 @@
+| Description | Quantity | Price |
+|-------------|----------|-------|
+| Burger | 2 | 12.50 |
+| Fries | 1 | 4.00 |

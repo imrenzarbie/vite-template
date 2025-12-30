@@ -2,6 +2,22 @@ import { Hono } from "hono";
 import { Bill } from "../types";
 import { db } from "../database";
 
+// Define TypeScript interfaces for the request payload
+interface CreateBillItemRequest {
+    name: string;
+    amount: number;
+    quantity: number;
+    assigned_user_ids: number[];
+}
+
+interface CreateBillRequest {
+    title: string;
+    group_id: number;
+    raw_markdown?: string;
+    created_by: number;
+    items: CreateBillItemRequest[];
+}
+
 export const bills = new Hono();
 
 bills.get("/:id", (c) => {
@@ -77,3 +93,78 @@ bills.get("/:id", (c) => {
 
     return c.json({ ...bill, items: formattedItems });
 });
+
+bills.post("/", async (c) => {
+    // ✅ Use generic type parameter instead of 'any'
+    const body = await c.req.json<CreateBillRequest>();
+
+    // Validate required fields
+    if (!body.title || !body.group_id || !body.created_by || !body.items) {
+        return c.json({ error: "Missing required fields" }, 400);
+    }
+
+    try {
+        // ✅ Type-safe reduce with proper type inference
+        const totalAmount = body.items.reduce(
+            (sum, item) => sum + item.amount,
+            0
+        );
+
+        // Transaction to create bill, items, and assignments
+        const result = db.transaction(() => {
+            const billRes = db
+                .prepare(
+                    "INSERT INTO bills (title, group_id, raw_markdown, total_amount, created_by) VALUES (?, ?, ?, ?, ?)"
+                )
+                .run(
+                    body.title,
+                    body.group_id,
+                    body.raw_markdown || null,
+                    totalAmount,
+                    body.created_by
+                );
+
+            const billId = billRes.lastInsertRowid;
+
+            for (const item of body.items) {
+                const itemRes = db
+                    .prepare(
+                        "INSERT INTO bill_items (bill_id, name, amount, quantity) VALUES (?, ?, ?, ?)"
+                    )
+                    .run(billId, item.name, item.amount, item.quantity || 1);
+
+                const itemId = itemRes.lastInsertRowid;
+
+                for (const userId of item.assigned_user_ids) {
+                    db.prepare(
+                        "INSERT INTO bill_item_assignments (bill_item_id, user_id) VALUES (?, ?)"
+                    ).run(itemId, userId);
+                }
+            }
+
+            return billId;
+        })();
+
+        return c.json(
+            { id: result, message: "Bill created successfully" },
+            201
+        );
+    } catch (error) {
+        console.error(error);
+        return c.json({ error: "Failed to create bill" }, 500);
+    }
+});
+
+bills.get("/", (c) => {
+    const groupId = c.req.query("groupId");
+    if (!groupId) return c.json({ error: "groupId required" }, 400);
+
+    const bills = db
+        .prepare(
+            "SELECT * FROM bills WHERE group_id = ? ORDER BY created_at DESC"
+        )
+        .all(groupId) as Bill[];
+    return c.json(bills);
+});
+
+export default bills;
