@@ -2,23 +2,20 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { usersApi } from "../api/users";
 import { CreateUserRequest, UpdateUserRequest } from "../types/user.type";
-
-export const userKeys = {
-    all: ["users"] as const,
-};
+import { queryKeys } from "../query-keys";
 
 export function useUsers() {
     const queryClient = useQueryClient();
 
     const query = useQuery({
-        queryKey: userKeys.all,
+        queryKey: queryKeys.users.all,
         queryFn: usersApi.getAll,
     });
 
     const createMutation = useMutation({
         mutationFn: (payload: CreateUserRequest) => usersApi.create(payload),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: userKeys.all });
+            queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
         },
     });
 
@@ -31,14 +28,14 @@ export function useUsers() {
             payload: UpdateUserRequest;
         }) => usersApi.update(id, payload),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: userKeys.all });
+            queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
         },
     });
 
     const deleteMutation = useMutation({
         mutationFn: (id: number) => usersApi.delete(id),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: userKeys.all });
+            queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
         },
     });
 
