@@ -31,14 +31,14 @@ export const groupsApi = {
         const res = await fetch(`/api/groups`);
         if (!res.ok) throw new Error("Failed to fetch groups");
         const json = await res.json();
-        return json.data;
+        return json;
     },
 
     getById: async (id: number): Promise<GroupWithMembers> => {
         const res = await fetch(`/api/groups/${id}`);
         if (!res.ok) throw new Error("Failed to fetch group");
         const json = await res.json();
-        return json.data;
+        return json;
     },
 
     create: async (payload: CreateGroupPayload): Promise<{ id: number }> => {
