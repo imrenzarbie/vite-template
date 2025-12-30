@@ -1,31 +1,31 @@
-// --- Database Tables ---
-
 export interface User {
     id: number;
     username: string;
     email: string;
-    default_group_id: number | null;
-    // Computed field for the UI
-    active_group_id?: number | null;
+    default_group_id?: number | null;
+    created_at: string;
 }
 
 export interface Group {
     id: number;
     name: string;
-    parent_group_id: number | null;
+    parent_group_id?: number | null;
     created_at: string;
 }
 
 export interface GroupMember {
     group_id: number;
     user_id: number;
+    role: string;
 }
 
 export interface Bill {
     id: number;
     group_id: number;
     title: string;
-    raw_markdown: string;
+    raw_markdown?: string;
+    total_amount: number;
+    created_by: number;
     created_at: string;
 }
 
@@ -34,36 +34,32 @@ export interface BillItem {
     bill_id: number;
     name: string;
     amount: number;
-    // This is used when returning the summary
-    assigned_user_ids?: number[];
+    quantity: number;
 }
 
 export interface BillItemAssignment {
     bill_item_id: number;
     user_id: number;
+    paid_date: string | null;
 }
-
-// --- API Request Payloads ---
 
 export interface CreateUserRequest {
     username: string;
     email: string;
 }
 
-export type UpdateUserRequest = Partial<
-    Pick<User, "username" | "email" | "default_group_id">
->;
+export interface UpdateUserRequest {
+    username?: string;
+    email?: string;
+    default_group_id?: number | null;
+}
 
 export interface CreateGroupRequest {
     name: string;
-    parent_group_id?: number;
+    parent_group_id?: number | null;
 }
-export type UpdateGroupRequest = Partial<
-    Pick<Group, "name" | "parent_group_id">
->;
 
-export interface CreateBillRequest {
-    title: string;
-    groupId: number;
-    markdown: string; // Markdown format: "- Pizza: 20.00"
+export interface UpdateGroupRequest {
+    name?: string;
+    parent_group_id?: number | null;
 }

@@ -47,6 +47,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     bill_id INTEGER NOT NULL,
     name TEXT NOT NULL,
+    quantity INTEGER DEFAULT 1,
     amount REAL NOT NULL,
     FOREIGN KEY (bill_id) REFERENCES bills(id) ON DELETE CASCADE
   );
@@ -55,6 +56,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     bill_item_id INTEGER NOT NULL,
     user_id INTEGER NOT NULL,
+    paid_date TEXT,
     UNIQUE (bill_item_id, user_id),
     FOREIGN KEY (bill_item_id) REFERENCES bill_items(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
