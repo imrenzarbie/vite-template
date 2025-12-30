@@ -1,25 +1,44 @@
-// src/hooks/useUsers.ts
+// src/hooks/use-users.ts
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { usersApi } from "../api/users";
+import { CreateUserRequest, UpdateUserRequest } from "../types/user.type";
 
-import { useQuery } from "@tanstack/react-query";
-
-const API_BASE = "http://localhost:3001/api";
-
-export interface User {
-    id: number;
-    username: string;
-    email: string;
-    default_group_id: number | null;
-    created_at: string;
-}
+export const userKeys = {
+    all: ["users"] as const,
+};
 
 export function useUsers() {
+    const queryClient = useQueryClient();
+
     const query = useQuery({
-        queryKey: ["users"],
-        queryFn: async (): Promise<User[]> => {
-            const res = await fetch(`${API_BASE}/users`);
-            if (!res.ok) throw new Error("Failed to fetch users");
-            const json = await res.json();
-            return json.data;
+        queryKey: userKeys.all,
+        queryFn: usersApi.getAll,
+    });
+
+    const createMutation = useMutation({
+        mutationFn: (payload: CreateUserRequest) => usersApi.create(payload),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: userKeys.all });
+        },
+    });
+
+    const updateMutation = useMutation({
+        mutationFn: ({
+            id,
+            payload,
+        }: {
+            id: number;
+            payload: UpdateUserRequest;
+        }) => usersApi.update(id, payload),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: userKeys.all });
+        },
+    });
+
+    const deleteMutation = useMutation({
+        mutationFn: (id: number) => usersApi.delete(id),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: userKeys.all });
         },
     });
 
@@ -27,5 +46,11 @@ export function useUsers() {
         users: query.data ?? [],
         isLoading: query.isLoading,
         error: query.error,
+        createUser: createMutation.mutateAsync,
+        isCreating: createMutation.isPending,
+        updateUser: updateMutation.mutateAsync,
+        isUpdating: updateMutation.isPending,
+        deleteUser: deleteMutation.mutateAsync,
+        isDeleting: deleteMutation.isPending,
     };
 }

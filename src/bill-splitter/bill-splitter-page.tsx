@@ -1,9 +1,9 @@
 import { Toaster } from "sonner";
 import { ExportPanel } from "./components/export-panel";
-import { GroupManager } from "./components/group-manager";
 import { InputPanel } from "./components/input-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Dashboard from "./components/dashboard";
+import GroupManager from "./components/group-manager";
 
 const BillSplitterPage = () => {
     return (

@@ -1,5 +1,3 @@
-// src/hooks/useGroups.ts
-
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { groupsApi, CreateGroupPayload, AddMemberPayload } from "../api/groups";
 
@@ -8,7 +6,7 @@ export const groupKeys = {
     detail: (id: number) => ["groups", id] as const,
 };
 
-export function useGroups() {
+export const useGroups = () => {
     const queryClient = useQueryClient();
 
     const query = useQuery({
@@ -39,35 +37,13 @@ export function useGroups() {
         deleteGroup: deleteMutation.mutateAsync,
         isDeleting: deleteMutation.isPending,
     };
-}
+};
 
-export function useGroup(groupId: number | null) {
-    const queryClient = useQueryClient();
-
+export const useGroup = (groupId: number | null) => {
     const query = useQuery({
         queryKey: groupKeys.detail(groupId!),
         queryFn: () => groupsApi.getById(groupId!),
         enabled: groupId !== null,
-    });
-
-    const addMemberMutation = useMutation({
-        mutationFn: (payload: AddMemberPayload) =>
-            groupsApi.addMember(groupId!, payload),
-        onSuccess: () => {
-            queryClient.invalidateQueries({
-                queryKey: groupKeys.detail(groupId!),
-            });
-        },
-    });
-
-    const removeMemberMutation = useMutation({
-        mutationFn: (userId: number) =>
-            groupsApi.removeMember(groupId!, userId),
-        onSuccess: () => {
-            queryClient.invalidateQueries({
-                queryKey: groupKeys.detail(groupId!),
-            });
-        },
     });
 
     return {
@@ -75,9 +51,39 @@ export function useGroup(groupId: number | null) {
         isLoading: query.isLoading,
         error: query.error,
         refetch: query.refetch,
+    };
+};
+
+export const useGroupMutations = (groupId: number) => {
+    const queryClient = useQueryClient();
+
+    const addMemberMutation = useMutation({
+        mutationFn: (payload: AddMemberPayload) =>
+            groupsApi.addMember(groupId, payload),
+        onSuccess: () => {
+            queryClient.invalidateQueries({
+                queryKey: groupKeys.detail(groupId),
+            });
+        },
+    });
+
+    const removeMemberMutation = useMutation({
+        mutationFn: (userId: number) => groupsApi.removeMember(groupId, userId),
+        onSuccess: () => {
+            queryClient.invalidateQueries({
+                queryKey: groupKeys.detail(groupId),
+            });
+        },
+    });
+
+    return {
         addMember: addMemberMutation.mutateAsync,
         isAddingMember: addMemberMutation.isPending,
         removeMember: removeMemberMutation.mutateAsync,
         isRemovingMember: removeMemberMutation.isPending,
+        refetch: () =>
+            queryClient.invalidateQueries({
+                queryKey: groupKeys.detail(groupId),
+            }),
     };
-}
+};

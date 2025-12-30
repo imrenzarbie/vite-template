@@ -4,7 +4,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { vi, describe, it, expect, beforeEach } from "vitest";
-import { GroupManager } from "../components/group-manager";
+import GroupManager from "../components/group-manager";
 import "@testing-library/jest-dom";
 
 const mockGroups = [
